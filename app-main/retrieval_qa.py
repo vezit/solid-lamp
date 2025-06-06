@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 from pathlib import Path
-from typing import List
+from typing import List, Sequence, Dict
 
 import faiss
 import numpy as np
@@ -91,7 +92,11 @@ CHAT_MODEL = "gpt-3.5-turbo"
 
 
 def retrieve(
-    query: str, client: openai.OpenAI, index: faiss.IndexFlatIP, chunks: List[str], top_k: int = 3
+    query: str,
+    client: openai.OpenAI,
+    index: faiss.IndexFlatIP,
+    chunks: List[str],
+    top_k: int = 3,
 ) -> List[str]:
     """Return top-k chunk texts most relevant to the query."""
     q_emb = client.embeddings.create(input=query, model=EMBED_MODEL).data[0].embedding
@@ -101,17 +106,29 @@ def retrieve(
     return [chunks[i] for i in I[0]]
 
 
-def answer_question(client: openai.OpenAI, question: str, context_chunks: List[str]) -> str:
-    """Call ChatCompletion with context and question."""
+def answer_question(
+    client: openai.OpenAI,
+    question: str,
+    context_chunks: List[str],
+    model: str = CHAT_MODEL,
+    history: Sequence[Dict[str, str]] | None = None,
+) -> str:
+    """Call ChatCompletion with context and question using optional history."""
     context = "\n".join(ch.strip() for ch in context_chunks)
     system_msg = (
         "You are a helpful assistant answering questions about a book. "
         "Use only the provided context. If the answer is not contained in the context, say you do not know."
     )
     user_msg = f"Context:\n{context}\n\nQuestion: {question}\nAnswer:"
+
+    messages = [{"role": "system", "content": system_msg}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_msg})
+
     resp = client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}],
+        model=model,
+        messages=messages,
         temperature=0,
     )
     return resp.choices[0].message.content.strip()
@@ -123,6 +140,11 @@ def answer_question(client: openai.OpenAI, question: str, context_chunks: List[s
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Terminal book Q&A")
+    parser.add_argument("--chunk-size", type=int, default=300, help="Token count per chunk")
+    parser.add_argument("--top-k", type=int, default=3, help="Number of chunks to retrieve")
+    parser.add_argument("--model", type=str, default=CHAT_MODEL, help="ChatGPT model")
+    args = parser.parse_args()
     # Load .env from ../.devcontainer/.env (relative to this file)
     env_path = Path(__file__).resolve().parents[1] / '.devcontainer' / '.env'
     if env_path.exists():
@@ -150,13 +172,14 @@ def main() -> None:
 
 
     print("Chunking book text ...")
-    chunks = chunk_text(text)
+    chunks = chunk_text(text, max_tokens=args.chunk_size)
     print(f"Total chunks: {len(chunks)}")
 
     print("Embedding chunks (this may take a while) ...")
     embeds = embed_chunks(client, chunks)
     index = build_index(embeds)
 
+    history: List[Dict[str, str]] = []
     print("Ask a question about the book (type 'exit' to quit).")
     while True:
         try:
@@ -166,9 +189,11 @@ def main() -> None:
             break
         if q.strip().lower() in {"exit", "quit"}:
             break
-        top = retrieve(q, client, index, chunks)
-        answer = answer_question(client, q, top)
+        top = retrieve(q, client, index, chunks, top_k=args.top_k)
+        answer = answer_question(client, q, top, model=args.model, history=history)
         print("AI:", answer)
+        history.append({"role": "user", "content": q})
+        history.append({"role": "assistant", "content": answer})
 
 
 if __name__ == "__main__":
