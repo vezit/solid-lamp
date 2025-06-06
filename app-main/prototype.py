@@ -108,7 +108,7 @@ def locate_snippet(snippet: str, book_text: str) -> int:
         for i in range(len(book_words) - win_len)
     ]
 
-    idx, score, _ = process.extractOne(
+    _match, score, idx = process.extractOne(
         target,
         candidates,
         scorer=Levenshtein.normalized_similarity,
