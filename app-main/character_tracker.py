@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Simple prototype for tracking characters in a novel using OpenAI."""
+
+from __future__ import annotations
+
+import os
+import re
+from pathlib import Path
+from typing import List, Set
+
+import openai
+from dotenv import dotenv_values, load_dotenv
+from ebooklib import epub
+import tiktoken
+
+
+# ---------------------------------------------------------------------------
+# EPUB extraction and chunking helpers
+# ---------------------------------------------------------------------------
+
+
+def extract_text(epub_file: Path) -> str:
+    """Return raw text from the EPUB."""
+    if not epub_file.exists():
+        raise FileNotFoundError(f"EPUB not found: {epub_file}")
+
+    book = epub.read_epub(str(epub_file))
+    texts: List[str] = []
+    for item in book.get_items():
+        if item.get_type() in {epub.EpubHtml, epub.ITEM_DOCUMENT}:
+            html = item.get_content().decode("utf-8", errors="ignore")
+            plain = re.sub(r"<[^>]+>", " ", html)
+            texts.append(plain)
+    return "\n".join(texts)
+
+
+def chunk_text(text: str, max_tokens: int = 300) -> List[str]:
+    """Yield chunks of roughly ``max_tokens`` tokens."""
+    enc = tiktoken.get_encoding("cl100k_base")
+    tokens = enc.encode(text)
+
+    cur: List[int] = []
+    chunks: List[str] = []
+    for token in tokens:
+        cur.append(token)
+        if len(cur) >= max_tokens:
+            chunks.append(enc.decode(cur))
+            cur = []
+    if cur:
+        chunks.append(enc.decode(cur))
+    return chunks
+
+
+# ---------------------------------------------------------------------------
+# OpenAI helpers
+# ---------------------------------------------------------------------------
+
+CHAT_MODEL = "gpt-3.5-turbo"
+
+
+def load_api_key() -> str:
+    """Load OPENAI_API_KEY from environment or .devcontainer/.env."""
+    load_dotenv()
+    env_path = Path(__file__).resolve().parents[1] / ".devcontainer" / ".env"
+    if env_path.exists():
+        env = dotenv_values(env_path)
+        key = env.get("OPENAI_API_KEY")
+    else:
+        key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise RuntimeError(
+            f"OPENAI_API_KEY not found in environment or {env_path}"
+        )
+    return key
+
+
+def extract_names(client: openai.OpenAI, text: str) -> List[str]:
+    """Ask the model for character names mentioned in the text."""
+    system_msg = (
+        "You extract names of fictional characters from novel excerpts. "
+        "Return a comma-separated list of unique names."
+    )
+    user_msg = (
+        "Text:\n" + text + "\n\n" + "List the character names mentioned:" 
+    )
+
+    resp = client.chat.completions.create(
+        model=CHAT_MODEL,
+        messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}],
+        temperature=0,
+        max_tokens=60,
+    )
+    names = resp.choices[0].message.content
+    return [n.strip() for n in names.split(",") if n.strip()]
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    key = load_api_key()
+    client = openai.OpenAI(api_key=key)
+
+    epub_path = Path(__file__).with_name("Kongetro.epub.zip")
+    try:
+        text = extract_text(epub_path)
+    except FileNotFoundError:
+        print(
+            "EPUB not found. Place 'Kongetro.epub.zip' alongside this script."
+        )
+        return
+
+    chunks = chunk_text(text)
+    seen: Set[str] = set()
+
+    for chunk in chunks:
+        for name in extract_names(client, chunk):
+            seen.add(name)
+
+    print("Characters found:")
+    for name in sorted(seen):
+        print("-", name)
+
+
+if __name__ == "__main__":
+    main()
