@@ -39,7 +39,8 @@ RUN mkdir -p /usr/src/venvs \
     && python -m venv /usr/src/venvs/app-main
 COPY requirements.txt /usr/src/
 RUN /usr/src/venvs/app-main/bin/pip install --upgrade pip \
-    && /usr/src/venvs/app-main/bin/pip install -r /usr/src/requirements.txt
+    && /usr/src/venvs/app-main/bin/pip install -r /usr/src/requirements.txt \
+    && chown -R appuser:appuser /usr/src/venvs/app-main
 
 # Switch to the non-root user
 USER appuser
