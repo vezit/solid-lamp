@@ -1,11 +1,47 @@
-import re
+#!/usr/bin/env python3
+"""
+Prototype — find where an OCR-extracted snippet occurs in Kongetro.epub
+and give its Kindle-style location (‘Loc. X of Y’) plus a tiny Q-A loop.
 
+Put this file in  app-main/prototype.py  and execute:
+    python app-main/prototype.py
+"""
+
+from __future__ import annotations
+
+import re
 import zipfile
 from pathlib import Path
-
+from difflib import SequenceMatcher
 from typing import Dict, Tuple
 
-# Simple mapping of chapter ranges: chapter -> (start_page, end_page)
+# ============================================================================
+# Configuration & constants
+# ============================================================================
+
+PAGE_TEXT_FROM_PICTURE = """
+»Det er et drop off. Det er der ingen tvivl om.« Han pegede. »Se. Der, og igen der.
+Noget småt. Et usb-stik, måske? Bemærk, hvordan han ser sig over skulderen.
+Det er ren refleks.« Storm og Kampman studerede billederne.
+»Så hvad er tesen her? Hvis vi lige zoomer ud engang.« Tom så rundt på forsamlingen.
+»I siger, at Krebs var på sporet af en eller anden forbindelse mellem Abassi og
+Khavari. At Khavari med andre ord er et MOIS-aktiv. Nu er Krebs så død, formentlig
+for iranske hænder. Hvad er sammenhængen mellem Krebs og Khavari?«
+»Sammenhængen er mord,« sagde Kampman. Tom kiggede op fra billederne. »Siden
+Krebs henledte vores opmærksomhed på Khavari, har vi overvåget ham og kæresten,
+Julie Severin, i håbet om, at et eller andet brugbart skulle dukke op. Det har
+været en ren ørkenvandring. Men så i sidste uge skete der endelig noget. Theo
+faldt over en sær forespørgsel i forbindelse med nogle flybilletter, Severin
+havde bestilt hos SAS. Dubai-København med afgang fredag aften. En bruger havde
+om onsdagen spurgt til afgangen via flyselskabets chatbot. Theo fik sporet
+brugeren og kunne konstatere, at den var blevet oprettet på en bogcafé i Dubai
+samme dag, og
+""".strip()
+
+WORDS_PER_PAGE     = 250   # still useful for chapter estimate
+WORDS_PER_LOCATION = 40    # Kindle rule-of-thumb
+
+# Simple mapping (rough)  chapter -> (start_page, end_page)
 CHAPTER_RANGES: Dict[int, Tuple[int, int]] = {
     1: (1, 14),
     2: (15, 29),
@@ -13,120 +49,140 @@ CHAPTER_RANGES: Dict[int, Tuple[int, int]] = {
     4: (45, 59),
     5: (60, 74),
     6: (75, 89),
-    7: (90, 100)
+    7: (90, 100),
 }
 
-# Sample book pages with a few key pages mentioning Theo
-SPECIFIC_PAGES = {
-    5: "Theo is introduced early as a minor character.",
-    81: "At last, Theo appears. Theo is a cunning merchant from the east.",
-    82: "Theo helps the hero solve a puzzle.",
-    83: "They travel together. Theo proves to be brave and loyal.",
-}
+# ============================================================================
+# Utility helpers
+# ============================================================================
 
-
-WORDS_PER_PAGE = 250
 
 def extract_book_text() -> str:
-    """Return the raw text of the book if the epub zip exists."""
-    zip_path = Path(__file__).with_name('Kongetro.epub.zip')
+    """Return the book’s plain text (best-effort) or '' if epub missing."""
+    zip_path = Path(__file__).with_name("Kongetro.epub.zip")
     if not zip_path.exists():
         return ""
-    texts = []
-    with zipfile.ZipFile(zip_path, 'r') as zf:
+
+    texts: list[str] = []
+    with zipfile.ZipFile(zip_path, "r") as zf:
         for name in zf.namelist():
-            if name.endswith(('.xhtml', '.html', '.htm')):
-                with zf.open(name) as f:
-                    content = f.read().decode('utf-8', errors='ignore')
-                    # strip very basic html tags
-                    content = re.sub('<[^>]+>', ' ', content)
-                    texts.append(content)
-    return ' '.join(texts)
+            if name.endswith((".xhtml", ".html", ".htm")):
+                with zf.open(name) as file:
+                    html = file.read().decode("utf-8", errors="ignore")
+                    plain = re.sub(r"<[^>]+>", " ", html)  # naïve tag strip
+                    texts.append(plain)
+    return " ".join(texts)
+
+
+def _clean(text: str) -> list[str]:
+    """Lower-case, remove punctuation, collapse whitespace → list of words."""
+    return re.sub(r"[^\w\s]", " ", text.lower()).split()
+
 
 def locate_snippet(snippet: str, book_text: str) -> int:
-    """Approximate the page where `snippet` occurs in `book_text`."""
+    """
+    Return the *word index* where `snippet` starts in `book_text`.
+
+    Strategy:
+    1) Try exact substring search (fast).
+    2) Otherwise do fuzzy sliding-window search with SequenceMatcher.
+    """
+    # ---------- 1) exact ---------------------------------------------------
     idx = book_text.lower().find(snippet.lower().strip())
-    if idx == -1:
-        raise ValueError('Snippet not found in book text')
-    words_before = len(re.findall(r'\w+', book_text[:idx]))
-    return words_before // WORDS_PER_PAGE + 1
+    if idx != -1:
+        return len(re.findall(r"\w+", book_text[:idx]))
+
+    # ---------- 2) fuzzy ---------------------------------------------------
+    snippet_words = _clean(snippet)
+    book_words    = _clean(book_text)
+    if not snippet_words or not book_words:
+        raise ValueError("Empty text given for fuzzy search")
+
+    win_len   = min(max(len(snippet_words), 30), 120)  # 30–120-word window
+    threshold = 0.60                                   # similarity cut-off
+
+    best_ratio, best_start = 0.0, -1
+    for i in range(0, len(book_words) - win_len):
+        window = book_words[i : i + win_len]
+        ratio  = SequenceMatcher(None, snippet_words[:win_len], window).ratio()
+        if ratio > best_ratio:
+            best_ratio, best_start = ratio, i
+            if best_ratio > 0.95:      # almost perfect — stop early
+                break
+
+    if best_start == -1 or best_ratio < threshold:
+        raise ValueError("Snippet not found (even with fuzzy search)")
+
+    return best_start  # absolute word index
 
 
-def get_page_text(page: int) -> str:
-    """Return placeholder text for a given page."""
-    if page in SPECIFIC_PAGES:
-        return SPECIFIC_PAGES[page]
-    return f"Generic page {page} text."
-
-
-
-def gather_context(up_to_page: int, book_text: str | None = None) -> str:
-    """Gather text from page 1 up to `up_to_page`."""
-    if book_text:
-        words = re.findall(r"\w+", book_text)
-        context_words = words[: up_to_page * WORDS_PER_PAGE]
-        return " ".join(context_words)
-    pages = [get_page_text(p) for p in range(1, up_to_page + 1)]
-    return " ".join(pages)
-
-
-
-def parse_page_number(image_str: str) -> int:
-    """Extract a page number from the given image string."""
-    match = re.search(r"page\s*(\d+)", image_str, re.IGNORECASE)
-    if match:
-        return int(match.group(1))
-    raise ValueError("Could not detect page number in image string")
-
-
-def get_chapter(page: int) -> int:
-    for chap, (start, end) in CHAPTER_RANGES.items():
-        if start <= page <= end:
-            return chap
-    raise ValueError("Page out of range")
+def word_index_to_location(word_idx: int) -> int:
+    """Approximate Kindle location number from a 0-based word index."""
+    return word_idx // WORDS_PER_LOCATION + 1
 
 
 def answer_question(question: str, context: str) -> str:
-    """Very small rule-based QA for 'who is NAME?'"""
+    """Very small rule-based Q-A: handles 'Who is NAME?'."""
     m = re.match(r"who is ([^?]+)\?", question.strip(), re.IGNORECASE)
-    if m:
-        name = m.group(1).strip()
-        # Search for sentences mentioning the name
-        sentences = re.split(r"[.!?]", context)
-        hits = [s.strip() for s in sentences if name.lower() in s.lower()]
-        if hits:
-            return " ".join(hits) + "."
-        else:
-            return f"I couldn't find information about {name} so far."
-    return "I can only answer questions like 'Who is NAME?' in this prototype."
+    if not m:
+        return "I can only answer questions like 'Who is NAME?' in this prototype."
+
+    name = m.group(1).strip()
+    sentences = re.split(r"[.!?]", context)
+    hits = [s.strip() for s in sentences if name.lower() in s.lower()]
+
+    return " ".join(hits) + "." if hits else f"I couldn't find information about {name} so far."
 
 
-def main():
-    image = input("Paste image text containing the page number or snippet: ")
-    book_text = extract_book_text()
+# ============================================================================
+# Main
+# ============================================================================
+
+
+def main() -> None:
+    image_text = PAGE_TEXT_FROM_PICTURE
+    book_text  = extract_book_text()
+
+    if not book_text:
+        print("Kongetro.epub.zip not found — cannot calculate location.")
+        return
+
+    # ------------------------------------------------------------------ locate
     try:
-        page = parse_page_number(image)
-    except ValueError:
-        if not book_text:
-            print("Could not detect page number and book file missing to locate snippet.")
-            return
-        try:
-            page = locate_snippet(image, book_text)
-        except ValueError as e:
-            print(e)
-            return
-    chapter = get_chapter(page)
-    print(f"Detected page {page}, which is in chapter {chapter}.")
-    context = gather_context(page, book_text if book_text else None)
+        word_idx = locate_snippet(image_text, book_text)
+    except ValueError as exc:
+        print(exc)
+        return
 
+    # ------------------------------------------------------------------ output
+    location        = word_index_to_location(word_idx)
+    total_locations = word_index_to_location(len(re.findall(r"\w+", book_text)))
 
-    print("Ask questions about the story. Type 'exit' to quit.")
+    print(f"Loc. {location} of {total_locations}")  # FIRST output line
+
+    page_estimate = word_idx // WORDS_PER_PAGE + 1
+    chapter = next(
+        (c for c, (start, end) in CHAPTER_RANGES.items() if start <= page_estimate <= end),
+        "unknown"
+    )
+    print(f"(≈ page {page_estimate}, chapter {chapter})\n")
+
+    # ------------------------------------------------------------------ context
+    context_words = _clean(book_text)[: word_idx + WORDS_PER_PAGE]
+    context       = " ".join(context_words)
+
+    # ------------------------------------------------------------------ Q-A loop
+    print("Ask questions about the story (type 'exit' to quit).")
     while True:
-        q = input("You: ")
+        try:
+            q = input("You: ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye.")
+            break
         if q.lower() in {"exit", "quit"}:
             break
-        answer = answer_question(q, context)
-        print("AI:", answer)
+        print("AI:", answer_question(q, context))
+
 
 if __name__ == "__main__":
     main()
