@@ -1,0 +1,6 @@
+{
+    // Add a popular VS Code theme extension
+    "workbench.colorTheme": "Solarized Dark",
+    // You may need to install the theme extension if not present:
+    // "Solarized Dark" is provided by the extension: "Solarized Dark Theme"
+}
