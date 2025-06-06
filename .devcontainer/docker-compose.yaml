@@ -1,0 +1,19 @@
+services:
+  solid-lamp-app-main:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CURRENT_UID: ${CURRENT_UID}
+        CURRENT_GID: ${CURRENT_GID}
+    user: "${CURRENT_UID}:${CURRENT_GID}"
+    command: sleep infinity
+    stdin_open: true
+    tty: true
+    volumes:
+      - ..:/usr/src/project
+    environment:
+      - GIT_USER_NAME
+      - GIT_USER_EMAIL
+      - CURRENT_UID
+      - CURRENT_GID

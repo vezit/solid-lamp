@@ -1,0 +1,20 @@
+{
+    "name": "Dev container: solid-lamp",
+    "dockerComposeFile": "docker-compose.yaml",
+    "service": "solid-lamp-app-main",
+    "workspaceFolder": "/usr/src/project",
+    "remoteUser": "appuser",
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/src/venvs/app-main/bin/python"
+            },
+            "extensions": [
+                "ms-python.vscode-pylance",
+                "ms-python.debugpy",
+                "ms-python.python"
+            ]
+        }
+    },
+    "postStartCommand": "bash .devcontainer/postStartCommand.sh"
+}
