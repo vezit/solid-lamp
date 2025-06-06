@@ -1,5 +1,3 @@
-# solid-lamp
-
 Prototype of an app that helps you keep track of characters in a novel using artificial intelligence.
 
 ## Overview
@@ -13,4 +11,5 @@ python app-main/helloworld.py
 ```
 
 For now the script prints a greeting, but it forms the basis for future development.
+
 
