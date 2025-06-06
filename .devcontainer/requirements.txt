@@ -5,3 +5,4 @@ rapidfuzz          # stays for prototype.py
 tiktoken           # tokenizer used by retrieval_qa.py
 faiss-cpu          # vector index (CPU build is fine)
 numpy
+psycopg2-binary    # optional PostgreSQL support

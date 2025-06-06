@@ -9,7 +9,8 @@ This repository now includes three example scripts.
 - `retrieval_qa.py` builds a small Q&A tool that indexes the entire EPUB using
   OpenAI embeddings with FAISS for fast context retrieval.
 - `character_tracker.py` scans the book and asks OpenAI to list character names
-  mentioned in each chunk, producing a simple overview of who appears.
+  mentioned in each chunk, producing a simple overview of who appears. If a
+  PostgreSQL database is available, the names will also be stored there.
 
 If `app-main/Kongetro.epub.zip` is present, the prototype can also detect the page number by searching the provided text snippet in the book. Otherwise it falls back to placeholder pages.
 
@@ -33,3 +34,21 @@ have an older installation, upgrade with:
 ```
 pip install -U openai
 ```
+
+## Running PostgreSQL
+
+The included `docker-compose.yml` starts a small PostgreSQL database. Launch it
+with:
+
+```bash
+docker compose up -d db
+```
+
+The default connection details are:
+
+- `POSTGRES_USER=postgres`
+- `POSTGRES_PASSWORD=postgres`
+- `POSTGRES_DB=solidlamp`
+
+`character_tracker.py` will insert any detected character names into a table
+called `characters` when these credentials are available.
