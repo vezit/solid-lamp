@@ -9,11 +9,22 @@ Put this file in  app-main/prototype.py  and execute:
 
 from __future__ import annotations
 
+import os
 import re
 import zipfile
 from pathlib import Path
 from typing import Dict, Tuple
 import textwrap         # ← NEW, place beside the other imports
+
+import openai  # OpenAI API client
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from a .env file
+openai.api_key = os.getenv("OPENAI_API_KEY")
+if not openai.api_key:
+    raise RuntimeError(
+        "OpenAI API key not found. Set OPENAI_API_KEY in your .env file."
+    )
 
 from rapidfuzz import process
 from rapidfuzz.distance import Levenshtein
@@ -135,40 +146,43 @@ def word_idx_to_char_idx(book_txt: str, w_idx: int) -> int:
 
 
 def answer_question(question: str, context: str) -> str:
-    """Very small retrieval-based Q-A using the provided context."""
-    # Special-cased simple "Who is NAME?" handling
-    m = re.match(r"who is ([^?]+)\?", question.strip(), re.IGNORECASE)
-    if m:
-        name = m.group(1).strip()
-        sentences = re.split(r"[.!?]", context)
-        hits = [s.strip() for s in sentences if name.lower() in s.lower()]
-        return (
-            " ".join(hits) + "."
-            if hits
-            else f"I couldn't find information about {name} so far."
-        )
+    """Return an answer using GPT-4 based on the provided book context."""
 
-    # Generic keyword match across sentences
-    q_words = set(_clean(question))
-    if not q_words:
-        return "Please ask a question about the story."
-
-    best_score = 0
-    best_sentences: list[str] = []
-    for sentence in re.split(r"[.!?]", context):
-        s_words = set(_clean(sentence))
-        score = len(q_words & s_words)
-        if score > best_score and score > 0:
-            best_score = score
-            best_sentences = [sentence.strip()]
-        elif score == best_score and score > 0:
-            best_sentences.append(sentence.strip())
-
-    return (
-        " ".join(best_sentences[:2]) + "."
-        if best_sentences
-        else "I couldn't find an answer in the text so far."
+    system_message = (
+        "You are a helpful literary assistant. Answer the user's question using "
+        "ONLY the provided book excerpt. Do not reveal spoilers beyond this "
+        "excerpt. Structure your answer to include who or what the subject is, "
+        "where they were introduced, how their role has evolved so far, and any "
+        "relationships to other characters mentioned. If details are missing, "
+        "state that they are not in the excerpt."
     )
+
+    user_message = (
+        f"**Book Excerpt (context up to current page)**:\n{context}\n\n"
+        f"**Question**: {question}\n\n"
+        "Please answer based on the excerpt above, following the instructed "
+        "format."
+    )
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message},
+            ],
+            temperature=0.7,
+            max_tokens=500,
+        )
+    except Exception as exc:
+        print(f"Error calling OpenAI API: {exc}")
+        return "*(Failed to get answer from GPT-4)*"
+
+    answer = response["choices"][0]["message"]["content"].strip()
+
+    # Future improvement: parse the 'Relationships' portion of the answer to
+    # build a knowledge graph of characters and events.
+    return answer
 
 
 # ============================================================================
@@ -221,8 +235,9 @@ def main() -> None:
     print("--- page excerpt ends ------------------------------------------------\n")
 
     # ------------------------------------------------------------------ context
-    context_words = _clean(book_text)[: word_idx + WORDS_PER_PAGE]
-    context       = " ".join(context_words)
+    snippet_len = len(_clean(image_text))
+    context_words = _clean(book_text)[: word_idx + snippet_len]
+    context = " ".join(context_words)
 
     # ------------------------------------------------------------------ Q-A loop
     print("Ask questions about the story (type 'exit' to quit).")
