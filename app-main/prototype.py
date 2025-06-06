@@ -29,6 +29,8 @@ if not openai.api_key:
         f"OpenAI API key not found in {env_path}. Set OPENAI_API_KEY in your .env file."
     )
 
+client = openai.OpenAI(api_key=api_key)
+
 from rapidfuzz import process
 from rapidfuzz.distance import Levenshtein
 
@@ -168,7 +170,7 @@ def answer_question(question: str, context: str) -> str:
     )
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_message},

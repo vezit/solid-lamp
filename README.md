@@ -16,3 +16,10 @@ OPENAI_API_KEY=<your_key>
 ```
 
 The `prototype.py` script uses this key to query GPT-4 for answers about the book based on the text up to a detected snippet.
+
+This project expects the `openai` Python package version 1.0 or newer. If you
+have an older installation, upgrade with:
+
+```
+pip install -U openai
+```
