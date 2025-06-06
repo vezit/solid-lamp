@@ -135,16 +135,40 @@ def word_idx_to_char_idx(book_txt: str, w_idx: int) -> int:
 
 
 def answer_question(question: str, context: str) -> str:
-    """Very small rule-based Q-A: handles 'Who is NAME?'."""
+    """Very small retrieval-based Q-A using the provided context."""
+    # Special-cased simple "Who is NAME?" handling
     m = re.match(r"who is ([^?]+)\?", question.strip(), re.IGNORECASE)
-    if not m:
-        return "I can only answer questions like 'Who is NAME?' in this prototype."
+    if m:
+        name = m.group(1).strip()
+        sentences = re.split(r"[.!?]", context)
+        hits = [s.strip() for s in sentences if name.lower() in s.lower()]
+        return (
+            " ".join(hits) + "."
+            if hits
+            else f"I couldn't find information about {name} so far."
+        )
 
-    name = m.group(1).strip()
-    sentences = re.split(r"[.!?]", context)
-    hits = [s.strip() for s in sentences if name.lower() in s.lower()]
+    # Generic keyword match across sentences
+    q_words = set(_clean(question))
+    if not q_words:
+        return "Please ask a question about the story."
 
-    return " ".join(hits) + "." if hits else f"I couldn't find information about {name} so far."
+    best_score = 0
+    best_sentences: list[str] = []
+    for sentence in re.split(r"[.!?]", context):
+        s_words = set(_clean(sentence))
+        score = len(q_words & s_words)
+        if score > best_score and score > 0:
+            best_score = score
+            best_sentences = [sentence.strip()]
+        elif score == best_score and score > 0:
+            best_sentences.append(sentence.strip())
+
+    return (
+        " ".join(best_sentences[:2]) + "."
+        if best_sentences
+        else "I couldn't find an answer in the text so far."
+    )
 
 
 # ============================================================================
