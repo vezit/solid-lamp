@@ -10,6 +10,7 @@ from typing import List, Set
 
 import openai
 from dotenv import dotenv_values, load_dotenv
+import ebooklib
 from ebooklib import epub
 import tiktoken
 
@@ -27,7 +28,7 @@ def extract_text(epub_file: Path) -> str:
     book = epub.read_epub(str(epub_file))
     texts: List[str] = []
     for item in book.get_items():
-        if item.get_type() in {epub.EpubHtml, epub.ITEM_DOCUMENT}:
+        if isinstance(item, epub.EpubHtml) or item.get_type() == ebooklib.ITEM_DOCUMENT:
             html = item.get_content().decode("utf-8", errors="ignore")
             plain = re.sub(r"<[^>]+>", " ", html)
             texts.append(plain)
