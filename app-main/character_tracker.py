@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from typing import List, Set
 
+import psycopg2
+
 import openai
 from dotenv import dotenv_values, load_dotenv
 import ebooklib
@@ -95,6 +97,26 @@ def extract_names(client: openai.OpenAI, text: str) -> List[str]:
     return [n.strip() for n in names.split(",") if n.strip()]
 
 
+def connect_db():
+    """Return a connection to PostgreSQL or ``None`` if unavailable."""
+    host = os.getenv("DB_HOST", "localhost")
+    port = int(os.getenv("DB_PORT", "5432"))
+    user = os.getenv("POSTGRES_USER", "postgres")
+    pwd = os.getenv("POSTGRES_PASSWORD", "postgres")
+    db = os.getenv("POSTGRES_DB", "solidlamp")
+    try:
+        conn = psycopg2.connect(host=host, port=port, user=user, password=pwd, dbname=db)
+        conn.autocommit = True
+    except Exception as exc:
+        print(f"Database connection failed: {exc}")
+        return None
+    with conn.cursor() as cur:
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS characters (id SERIAL PRIMARY KEY, name TEXT UNIQUE)"
+        )
+    return conn
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -120,9 +142,19 @@ def main() -> None:
         for name in extract_names(client, chunk):
             seen.add(name)
 
+    conn = connect_db()
+
     print("Characters found:")
     for name in sorted(seen):
         print("-", name)
+        if conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO characters(name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
+                    (name,)
+                )
+    if conn:
+        conn.close()
 
 
 if __name__ == "__main__":
