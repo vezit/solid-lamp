@@ -2,8 +2,12 @@
 # solid-lamp
 Appen hjælper dig med at få overblik over personer i en roman ved hjælp af kunstig intelligens.
 
-This repository now includes `prototype.py` which demonstrates a simple chat interface for exploring characters in a book.
-The Q\&A loop can answer basic questions about the text found up to a detected location.
+This repository now includes two example scripts.
+
+- `prototype.py` demonstrates a basic chat interface that answers questions about
+  the text found up to a detected location in the book.
+- `retrieval_qa.py` builds a small Q&A tool that indexes the entire EPUB using
+  OpenAI embeddings with FAISS for fast context retrieval.
 
 If `app-main/Kongetro.epub.zip` is present, the prototype can also detect the page number by searching the provided text snippet in the book. Otherwise it falls back to placeholder pages.
 
