@@ -17,13 +17,16 @@ from typing import Dict, Tuple
 import textwrap         # ← NEW, place beside the other imports
 
 import openai  # OpenAI API client
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
+
 
 load_dotenv()  # Load environment variables from a .env file
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
+env_path = Path(__file__).resolve().parents[1] / '.devcontainer' / '.env'
+env = dotenv_values(env_path)
+openai.api_key = env.get('OPENAI_API_KEY')
+if not openai.api_key:
     raise RuntimeError(
-        "OpenAI API key not found. Set OPENAI_API_KEY in your .env file."
+        f"OpenAI API key not found in {env_path}. Set OPENAI_API_KEY in your .env file."
     )
 
 client = openai.OpenAI(api_key=api_key)
