@@ -1,6 +1,8 @@
 import re
+
 import zipfile
 from pathlib import Path
+
 from typing import Dict, Tuple
 
 # Simple mapping of chapter ranges: chapter -> (start_page, end_page)
@@ -21,6 +23,7 @@ SPECIFIC_PAGES = {
     82: "Theo helps the hero solve a puzzle.",
     83: "They travel together. Theo proves to be brave and loyal.",
 }
+
 
 WORDS_PER_PAGE = 250
 
@@ -48,11 +51,13 @@ def locate_snippet(snippet: str, book_text: str) -> int:
     words_before = len(re.findall(r'\w+', book_text[:idx]))
     return words_before // WORDS_PER_PAGE + 1
 
+
 def get_page_text(page: int) -> str:
     """Return placeholder text for a given page."""
     if page in SPECIFIC_PAGES:
         return SPECIFIC_PAGES[page]
     return f"Generic page {page} text."
+
 
 
 def gather_context(up_to_page: int, book_text: str | None = None) -> str:
@@ -63,6 +68,7 @@ def gather_context(up_to_page: int, book_text: str | None = None) -> str:
         return " ".join(context_words)
     pages = [get_page_text(p) for p in range(1, up_to_page + 1)]
     return " ".join(pages)
+
 
 
 def parse_page_number(image_str: str) -> int:
@@ -112,6 +118,7 @@ def main():
     chapter = get_chapter(page)
     print(f"Detected page {page}, which is in chapter {chapter}.")
     context = gather_context(page, book_text if book_text else None)
+
 
     print("Ask questions about the story. Type 'exit' to quit.")
     while True:
