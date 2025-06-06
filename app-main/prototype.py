@@ -13,6 +13,7 @@ import re
 import zipfile
 from pathlib import Path
 from typing import Dict, Tuple
+import textwrap         # ← NEW, place beside the other imports
 
 from rapidfuzz import process
 from rapidfuzz.distance import Levenshtein
@@ -125,6 +126,14 @@ def word_index_to_location(word_idx: int) -> int:
     return word_idx // WORDS_PER_LOCATION + 1
 
 
+def word_idx_to_char_idx(book_txt: str, w_idx: int) -> int:
+    """Translate a word index back to a character offset in the raw text."""
+    for i, m in enumerate(re.finditer(r"\w+", book_txt)):
+        if i == w_idx:
+            return m.start()
+    return -1  # should never happen
+
+
 def answer_question(question: str, context: str) -> str:
     """Very small rule-based Q-A: handles 'Who is NAME?'."""
     m = re.match(r"who is ([^?]+)\?", question.strip(), re.IGNORECASE)
@@ -170,6 +179,22 @@ def main() -> None:
         "unknown"
     )
     print(f"(≈ page {page_estimate}, chapter {chapter})\n")
+
+    # --------------------------- echo the discovered page ------------------------
+    echo_words = WORDS_PER_PAGE                    # one “page” ≈ 250 words
+    half_page  = echo_words // 2                  # centre excerpt on the snippet
+
+    start_word = max(0, word_idx - half_page)
+    end_word   = word_idx + half_page
+
+    start_char = word_idx_to_char_idx(book_text, start_word)
+    end_char   = word_idx_to_char_idx(book_text, end_word)
+
+    page_excerpt = book_text[start_char:end_char].strip()
+
+    print("--- page excerpt begins ----------------------------------------------")
+    print(textwrap.fill(page_excerpt, width=80))
+    print("--- page excerpt ends ------------------------------------------------\n")
 
     # ------------------------------------------------------------------ context
     context_words = _clean(book_text)[: word_idx + WORDS_PER_PAGE]
