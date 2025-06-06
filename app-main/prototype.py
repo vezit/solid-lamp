@@ -12,8 +12,10 @@ from __future__ import annotations
 import re
 import zipfile
 from pathlib import Path
-from difflib import SequenceMatcher
 from typing import Dict, Tuple
+
+from rapidfuzz import process
+from rapidfuzz.distance import Levenshtein
 
 # ============================================================================
 # Configuration & constants
@@ -85,7 +87,7 @@ def locate_snippet(snippet: str, book_text: str) -> int:
 
     Strategy:
     1) Try exact substring search (fast).
-    2) Otherwise do fuzzy sliding-window search with SequenceMatcher.
+    2) Otherwise do fuzzy search with RapidFuzz.
     """
     # ---------- 1) exact ---------------------------------------------------
     idx = book_text.lower().find(snippet.lower().strip())
@@ -98,22 +100,24 @@ def locate_snippet(snippet: str, book_text: str) -> int:
     if not snippet_words or not book_words:
         raise ValueError("Empty text given for fuzzy search")
 
-    win_len   = min(max(len(snippet_words), 30), 120)  # 30–120-word window
-    threshold = 0.60                                   # similarity cut-off
+    win_len = min(max(len(snippet_words), 30), 120)  # 30–120-word window
+    target  = " ".join(snippet_words[:win_len])
 
-    best_ratio, best_start = 0.0, -1
-    for i in range(0, len(book_words) - win_len):
-        window = book_words[i : i + win_len]
-        ratio  = SequenceMatcher(None, snippet_words[:win_len], window).ratio()
-        if ratio > best_ratio:
-            best_ratio, best_start = ratio, i
-            if best_ratio > 0.95:      # almost perfect — stop early
-                break
+    candidates = [
+        " ".join(book_words[i : i + win_len])
+        for i in range(len(book_words) - win_len)
+    ]
 
-    if best_start == -1 or best_ratio < threshold:
+    idx, score, _ = process.extractOne(
+        target,
+        candidates,
+        scorer=Levenshtein.normalized_similarity,
+    )
+
+    if score * 100 < 85:
         raise ValueError("Snippet not found (even with fuzzy search)")
 
-    return best_start  # absolute word index
+    return idx  # absolute word index
 
 
 def word_index_to_location(word_idx: int) -> int:
