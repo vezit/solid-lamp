@@ -122,10 +122,16 @@ def answer_question(client: openai.OpenAI, question: str, context_chunks: List[s
 
 
 def main() -> None:
-    load_dotenv()
-    api_key = os.getenv("OPENAI_API_KEY")
+    # Load .env from ../.devcontainer/.env (relative to this file)
+    env_path = Path(__file__).resolve().parents[1] / '.devcontainer' / '.env'
+    if env_path.exists():
+        from dotenv import dotenv_values
+        env = dotenv_values(env_path)
+        api_key = env.get("OPENAI_API_KEY")
+    else:
+        api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY missing in environment")
+        raise RuntimeError(f"OPENAI_API_KEY missing in environment or in {env_path}")
     client = openai.OpenAI(api_key=api_key)
 
     epub_path = Path(__file__).with_name("Kongetro.epub.zip")
@@ -134,6 +140,7 @@ def main() -> None:
     except FileNotFoundError:
         print("EPUB file not found; place 'Kongetro.epub.zip' in app-main.")
         return
+
 
     print("Chunking book text ...")
     chunks = chunk_text(text)

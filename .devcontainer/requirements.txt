@@ -1,5 +1,7 @@
-# Add your Python dependencies here
 openai
 python-dotenv
 ebooklib
-rapidfuzz
+rapidfuzz          # stays for prototype.py
+tiktoken           # tokenizer used by retrieval_qa.py
+faiss-cpu          # vector index (CPU build is fine)
+numpy
