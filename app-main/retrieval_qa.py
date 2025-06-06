@@ -29,7 +29,7 @@ def extract_text(epub_file: Path) -> str:
     book = epub.read_epub(str(epub_file))
     texts: List[str] = []
     for item in book.get_items():
-        if item.get_type() == epub.EpubHtml:
+        if item.get_type() in {epub.EpubHtml, epub.ITEM_DOCUMENT}:
             html = item.get_content().decode("utf-8", errors="ignore")
             # naive HTML tag strip
             plain = re.sub(r"<[^>]+>", " ", html)
@@ -139,6 +139,12 @@ def main() -> None:
         text = extract_text(epub_path)
     except FileNotFoundError:
         print("EPUB file not found; place 'Kongetro.epub.zip' in app-main.")
+        return
+    if not text.strip():
+        print(
+            "\u274c No readable text extracted from the EPUB. "
+            "Check the file path or extraction logic."
+        )
         return
 
 
