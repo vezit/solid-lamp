@@ -1,4 +1,8 @@
 import re
+
+import zipfile
+from pathlib import Path
+
 from typing import Dict, Tuple
 
 # Simple mapping of chapter ranges: chapter -> (start_page, end_page)
@@ -20,6 +24,34 @@ SPECIFIC_PAGES = {
     83: "They travel together. Theo proves to be brave and loyal.",
 }
 
+
+WORDS_PER_PAGE = 250
+
+def extract_book_text() -> str:
+    """Return the raw text of the book if the epub zip exists."""
+    zip_path = Path(__file__).with_name('Kongetro.epub.zip')
+    if not zip_path.exists():
+        return ""
+    texts = []
+    with zipfile.ZipFile(zip_path, 'r') as zf:
+        for name in zf.namelist():
+            if name.endswith(('.xhtml', '.html', '.htm')):
+                with zf.open(name) as f:
+                    content = f.read().decode('utf-8', errors='ignore')
+                    # strip very basic html tags
+                    content = re.sub('<[^>]+>', ' ', content)
+                    texts.append(content)
+    return ' '.join(texts)
+
+def locate_snippet(snippet: str, book_text: str) -> int:
+    """Approximate the page where `snippet` occurs in `book_text`."""
+    idx = book_text.lower().find(snippet.lower().strip())
+    if idx == -1:
+        raise ValueError('Snippet not found in book text')
+    words_before = len(re.findall(r'\w+', book_text[:idx]))
+    return words_before // WORDS_PER_PAGE + 1
+
+
 def get_page_text(page: int) -> str:
     """Return placeholder text for a given page."""
     if page in SPECIFIC_PAGES:
@@ -27,10 +59,16 @@ def get_page_text(page: int) -> str:
     return f"Generic page {page} text."
 
 
-def gather_context(up_to_page: int) -> str:
+
+def gather_context(up_to_page: int, book_text: str | None = None) -> str:
     """Gather text from page 1 up to `up_to_page`."""
+    if book_text:
+        words = re.findall(r"\w+", book_text)
+        context_words = words[: up_to_page * WORDS_PER_PAGE]
+        return " ".join(context_words)
     pages = [get_page_text(p) for p in range(1, up_to_page + 1)]
-    return " " .join(pages)
+    return " ".join(pages)
+
 
 
 def parse_page_number(image_str: str) -> int:
@@ -64,15 +102,23 @@ def answer_question(question: str, context: str) -> str:
 
 
 def main():
-    image = input("Paste image text containing the page number: ")
+    image = input("Paste image text containing the page number or snippet: ")
+    book_text = extract_book_text()
     try:
         page = parse_page_number(image)
-    except ValueError as e:
-        print(e)
-        return
+    except ValueError:
+        if not book_text:
+            print("Could not detect page number and book file missing to locate snippet.")
+            return
+        try:
+            page = locate_snippet(image, book_text)
+        except ValueError as e:
+            print(e)
+            return
     chapter = get_chapter(page)
     print(f"Detected page {page}, which is in chapter {chapter}.")
-    context = gather_context(page)
+    context = gather_context(page, book_text if book_text else None)
+
 
     print("Ask questions about the story. Type 'exit' to quit.")
     while True:
