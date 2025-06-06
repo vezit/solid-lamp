@@ -20,11 +20,13 @@ import openai  # OpenAI API client
 from dotenv import load_dotenv
 
 load_dotenv()  # Load environment variables from a .env file
-openai.api_key = os.getenv("OPENAI_API_KEY")
-if not openai.api_key:
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
     raise RuntimeError(
         "OpenAI API key not found. Set OPENAI_API_KEY in your .env file."
     )
+
+client = openai.OpenAI(api_key=api_key)
 
 from rapidfuzz import process
 from rapidfuzz.distance import Levenshtein
@@ -165,7 +167,7 @@ def answer_question(question: str, context: str) -> str:
     )
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_message},
